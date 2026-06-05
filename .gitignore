@@ -1,0 +1,36 @@
+# Build
+build/
+out/
+cmake-build-*/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.cache/
+compile_commands.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# TLS artifacts
+*.pem
+*.key
+*.crt
+*.csr
+
+# Capture output
+capture/
+traffic.jsonl
+certs

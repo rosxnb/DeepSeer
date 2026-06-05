@@ -1,0 +1,156 @@
+{
+    "version": 10,
+    "cmakeMinimumRequired": {
+        "major": 4,
+        "minor": 3,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "23",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+                "CMAKE_CXX_EXTENSIONS": "OFF",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "gcc-macos",
+            "description": "GCC 15 on macOS (Homebrew). Pinned to MacOSX15.4 SDK to avoid GCC/macOS26 SDK incompatibility.",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc-15",
+                "CMAKE_CXX_COMPILER": "g++-15",
+                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+            }
+        },
+        {
+            "name": "clang-macos",
+            "description": "Homebrew Clang 22 on macOS. Used for sanitizer builds (ASan/TSan) because GCC on macOS doesn't ship sanitizer runtime libraries.",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "/usr/local/opt/llvm/bin/clang",
+                "CMAKE_CXX_COMPILER": "/usr/local/opt/llvm/bin/clang++",
+                "CMAKE_CXX_SCAN_FOR_MODULES": "OFF"
+            }
+        },
+        {
+            "name": "gcc-linux",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Linux"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "gcc-windows",
+            "hidden": true,
+            "inherits": "base",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_COMPILER": "g++"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug (GCC)",
+            "description": "Debug build with GCC. Primary development preset.",
+            "inherits": "clang-macos",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "DEEPSEER_BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release (GCC)",
+            "inherits": ["gcc-macos", "gcc-linux", "gcc-windows"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "DEEPSEER_BUILD_TESTS": "OFF"
+            }
+        },
+        {
+            "name": "relwithdebinfo",
+            "displayName": "Release + Debug Info (GCC)",
+            "inherits": ["gcc-macos", "gcc-linux", "gcc-windows"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "DEEPSEER_BUILD_TESTS": "OFF"
+            }
+        },
+        {
+            "name": "asan",
+            "displayName": "ASan + UBSan (Clang on macOS, GCC on Linux)",
+            "description": "AddressSanitizer + UndefinedBehaviorSanitizer. Uses Homebrew Clang on macOS because GCC doesn't ship sanitizer runtimes on macOS. Uses GCC on Linux where sanitizers work natively.",
+            "inherits": ["clang-macos", "gcc-linux", "gcc-windows"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "DEEPSEER_BUILD_TESTS": "ON",
+                "DEEPSEER_ENABLE_ASAN": "ON"
+            }
+        },
+        {
+            "name": "tsan",
+            "displayName": "TSan (Clang on macOS, GCC on Linux)",
+            "description": "ThreadSanitizer. Cannot be combined with ASan. Same compiler strategy as asan preset.",
+            "inherits": ["clang-macos", "gcc-linux", "gcc-windows"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "DEEPSEER_BUILD_TESTS": "ON",
+                "DEEPSEER_ENABLE_TSAN": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "debug",          "configurePreset": "debug" },
+        { "name": "release",        "configurePreset": "release" },
+        { "name": "relwithdebinfo", "configurePreset": "relwithdebinfo" },
+        { "name": "asan",           "configurePreset": "asan" },
+        { "name": "tsan",           "configurePreset": "tsan" }
+    ],
+    "testPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "asan",
+            "configurePreset": "asan",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "tsan",
+            "configurePreset": "tsan",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}
