@@ -87,6 +87,7 @@ Start the proxy with the CA:
 curl -v http://example.com --proxy "127.0.0.1:8080"
 
 # HTTPS with MITM (requires CA trust or --cacert)
+curl -v https://httpbin.org/get --proxy "127.0.0.1:8080"
 curl -v https://example.com --proxy "127.0.0.1:8080" --cacert ca.crt
 
 # HTTPS tunnel (no MITM, when CA not provided)

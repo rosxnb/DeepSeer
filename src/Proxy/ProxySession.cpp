@@ -215,6 +215,7 @@ ProxySession::startTlsMitm(std::string const& hostname)
     upstream_.reset();
     tlsUpstream_ = std::make_shared<TlsConnection>(
         std::move(upstreamSock), upstreamCtx, loop_, false);
+    tlsUpstream_->setSni(hostname);
 
     tlsUpstream_->startHandshake(
         [self, upstreamCtx, hostname]() {
