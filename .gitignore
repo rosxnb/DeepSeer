@@ -2,9 +2,6 @@
 build/
 out/
 cmake-build-*/
-DeepSeerLogs/
-[Ll]ogs/
-*.log
 
 # IDE
 .idea/
@@ -36,4 +33,7 @@ Thumbs.db
 # Capture output
 capture/
 traffic.jsonl
-certs
+certs/
+DeepSeerLogs/
+[Ll]ogs/
+*.log

@@ -21,7 +21,9 @@
 /// must outlive its event registrations. The shared_ptr prevents use-after-free
 /// even if the owning ProxySession drops its reference.
 ///
-/// **fd ownership**: Connection owns the Socket and its fd.
+/// **fd ownership**: Connection owns the Socket and its fd. Use `release_socket()`
+/// to extract the Socket (e.g., when transferring to TlsConnection). After
+/// release, the Connection is invalid — do not call any methods on it.
 ///
 /// ## Write Buffering
 ///
@@ -49,14 +51,19 @@
 namespace DeepSeer
 {
 
-/// Callback types for Connection Events.
+/// Callback receiving a Buffer of data from the connection.
+/// The Buffer is valid only during the callback — move data out if needed.
 using DataCallback  = std::function<void(Buffer& data)>;
+
+/// Callback receiving an Error when something goes wrong.
 using ErrorCallback = std::function<void(Error error)>;
 
 /// Event-driven bidirectional TCP connection.
 class Connection : public std::enable_shared_from_this<Connection>
 {
 public:
+    /// @param socket Non-blocking socket (caller must have called set_nonblocking).
+    /// @param loop   The event loop to register I/O events with.
     Connection(Socket socket, EventLoop& loop);
     ~Connection();
 
@@ -68,22 +75,39 @@ public:
     void onClose(Callback cb)       { onClose_ = std::move(cb); }
     void onError(ErrorCallback cb)  { onError_ = std::move(cb); }
 
-    /// Register with event loop for reading.
+    /// Begin reading from the socket. Registers EVFILT_READ with the EventLoop.
     void startRead();
 
-    /// Write data to the connection. Buffers internally if socket no writeable.
+    /// Stop reading from the socket. Removes the readable watch.
+    /// Used before transferring the socket to TlsConnection for MITM.
+    void stopRead();
+
+    /// Send data to the peer. Buffers internally, attempts immediate flush.
+    /// The Buffer is consumed (moved into the internal write buffer).
     void write(Buffer& data);
+
+    /// Send a string. Convenience wrapper.
     void write(std::string_view data);
 
-    /// Shutdown write side (half-close).
+    /// Half-close the write side (TCP FIN). Peer receives EOF.
     void shutdownWrite();
 
-    /// Close the connection fully.
+    /// Fully close the connection. Removes all event registrations.
     void close();
 
     bool connected() const { return !closed_; }
     Fd fd() const { return socket_.fd(); }
     EventLoop& loop() { return loop_; }
+
+    /// Extract the underlying Socket, transferring fd ownership.
+    /// Removes event registrations. Connection is invalid after this call.
+    /// Used when upgrading a plain connection to TLS (MITM).
+    Socket releaseSocket()
+    {
+        loop_.remove(socket_.fd());
+        closed_ = true;
+        return std::move(socket_);
+    }
 
 private:
     /// Recalculate which events to watch based on reading_ and writeBuf_ state.
@@ -102,8 +126,6 @@ private:
     bool reading_ {false};
 
     Buffer writeBuf_;
-    bool writeResgistered_ {false};
-
     DataCallback onData_;
     Callback onClose_;
     ErrorCallback onError_;

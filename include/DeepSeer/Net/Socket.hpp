@@ -5,7 +5,8 @@
 ///
 /// Socket is move-only and owns its file descriptor. The destructor calls
 /// close(). Construction is through the static factory `createSocket()` —
-/// the raw-fd constructor is private.
+/// the raw-fd constructor is private. Use `release()` to transfer fd ownership
+/// elsewhere (e.g., to a TlsConnection) without closing.
 ///
 /// ## Server & Client
 ///
@@ -61,17 +62,21 @@ public:
     Socket(Socket& other) = delete;
     Socket& operator=(Socket& other) = delete;
 
+    /// Create a new TCP socket.
     static Expected<Socket> createSocket(Address const& addr);
 
-    /// Binds and listen on the provided address.
+    /// Bind to the given address and start listening for connections.
+    /// @param backlog Maximum pending connection queue length.
     VoidResult bindAndListen(Address const& addr, int backlog = SOMAXCONN);
 
-    /// Non-blocking connect to a remote address.
-    /// Returns true if connected immediately, false if in-progress (watch for writeable).
+    /// Initiate a non-blocking TCP connect to the given address.
+    /// @returns true if connected immediately, false if in-progress (EINPROGRESS).
+    ///          Watch the fd for writable to detect completion.
     Expected<bool> connect(Address const& addr);
 
     /// Accept a new connection on a listening socket.
     /// If clientAddr is non-null, the peer's address is written into it.
+    /// @returns Socket for new connected client and its address in `clientAddr` is not `nullptr`.
     Expected<Socket> accept(Address* clientAddr = nullptr);
 
     /// Set socket to non-blocking mode.
@@ -80,13 +85,25 @@ public:
     /// Set SO_REUSEADDR.
     VoidResult setReuseAddr();
 
-    /// Read upto len bytes. Returns bytes read (>0), 0 on EOF, -1 on EAGAIN.
+    /// Non-blocking read.
+    /// @returns >0: bytes read. 0: EOF (peer closed). -1: EAGAIN (no data, retry later).
     Expected<ssize_t> read(std::byte* buf, size_t len);
 
-    /// Write upto len bytes. Returns bytes written.
+    /// Non-blocking write.
+    /// @returns bytes written (may be less than len — partial write). 0 = EAGAIN.
     Expected<size_t> write(std::byte const* buf, size_t len);
 
     void close();
+
+    /// Release ownership of the fd without closing it. Returns the raw fd.
+    /// After this call, the Socket is invalid (fd_ == kInvalidFd).
+    /// Used when transferring the fd to a TlsConnection.
+    Fd release()
+    {
+        auto fd = fd_;
+        fd_ = kInvalidFd;
+        return fd;
+    }
 
     Fd   fd() const { return fd_; }
     bool valid() const { return fd_ != kInvalidFd; }
@@ -94,8 +111,8 @@ public:
 private:
     Fd fd_{kInvalidFd};
 
+    /// Construct from a raw fd (takes ownership).
     explicit Socket(Fd fd);
-
 };
 
 } // DeepSeer

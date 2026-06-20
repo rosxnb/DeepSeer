@@ -1,6 +1,6 @@
 # DeepSeer
 
-DeepSeer is a MITM proxy with deep packet inspection (DPI) capabilities. It intercepts HTTP traffic, inspects requests/responses, and forwards them transparently.
+DeepSeer is a MITM proxy with deep packet inspection (DPI) capabilities. It intercepts HTTP and HTTPS traffic, inspects requests/responses, and forwards them transparently. For HTTPS, it performs TLS interception by dynamically generating per-host certificates signed by a local CA.
 
 ## Prerequisites
 
@@ -37,17 +37,59 @@ cmake --build --preset release
 
 ## Run
 
+### HTTP-only (no TLS interception)
+
 ```bash
 ./build/debug/DeepSeer
 ```
 
-The proxy listens on `0.0.0.0:8080` by default. Test with curl:
+HTTPS CONNECT requests are tunneled as opaque TCP — the proxy cannot inspect the encrypted traffic.
+
+### With TLS interception (MITM)
+
+Generate a local CA certificate:
+
+```bash
+./tools/gen_ca.sh <out-dir>
+```
+
+This creates `ca.crt` and `ca.key` in the output directory. Trust the CA on your system so browsers/curl accept the forged certificates:
+
+```bash
+# macOS
+sudo security add-trusted-cert -d -r trustRoot \
+    -k /Library/Keychains/System.keychain ca.crt
+
+# Linux (Debian/Ubuntu)
+sudo cp ca.crt /usr/local/share/ca-certificates/deepseer-ca.crt
+sudo update-ca-certificates
+```
+
+Start the proxy with the CA:
+
+```bash
+./build/debug/DeepSeer --ca-cert ca.crt --ca-key ca.key
+```
+
+### CLI options
+
+| Flag        | Description                     | Default |
+|-------------|---------------------------------|---------|
+| `--port N`  | Listen port                     | 8080    |
+| `--ca-cert` | Path to CA certificate PEM      | (none)  |
+| `--ca-key`  | Path to CA private key PEM      | (none)  |
+| `--version` | Print version and exit          |         |
+
+### Testing with curl
 
 ```bash
 # HTTP proxy
 curl -v http://example.com --proxy "127.0.0.1:8080"
 
-# HTTPS tunnel (CONNECT)
+# HTTPS with MITM (requires CA trust or --cacert)
+curl -v https://example.com --proxy "127.0.0.1:8080" --cacert ca.crt
+
+# HTTPS tunnel (no MITM, when CA not provided)
 curl -v https://example.com --proxy "127.0.0.1:8080"
 ```
 
@@ -78,6 +120,8 @@ include/DeepSeer/
   Net/        Socket, Address, Listener, Connection
   Proxy/      ProxySession — per-connection proxy logic
   Server/     Top-level server, accept loop
+  Tls/        TLS interception: CertGenerator, CertCache, TlsConnection
 src/          Implementation files (mirrors include/ layout)
 test/         GoogleTest test suites
+tools/        Helper scripts (gen_ca.sh)
 ```

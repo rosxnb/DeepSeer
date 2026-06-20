@@ -33,8 +33,11 @@
 #include <DeepSeer/Net/Address.hpp>
 #include <DeepSeer/Net/Listener.hpp>
 #include <DeepSeer/Proxy/ProxySession.hpp>
+#include <DeepSeer/Server/Server.hpp>
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace DeepSeer
@@ -45,7 +48,10 @@ namespace DeepSeer
 class Server
 {
 public:
-    explicit Server(Address listenAddr);
+    /// @param listenAddr  Address to listen on (e.g., "0.0.0.0":8080).
+    /// @param caCertPath Path to CA certificate PEM (empty = no MITM).
+    /// @param caKeyPath  Path to CA private key PEM (empty = no MITM).
+    explicit Server(Address listenAddr, std::string caCertPath = {}, std::string caKeyPath = {});
 
     /// Start the server. Blocks until stop() is called.
     VoidResult run();
@@ -57,8 +63,12 @@ private:
     void onNewConnection(Socket client, Address addr);
 
     Address                                     listenAddr_;
+    std::string                                 caCertPath_;
+    std::string                                 caKeyPath_;
     std::unique_ptr<EventLoop>                  loop_;
     std::unique_ptr<Listener>                   listener_;
+    std::optional<CertGenerator>                certGen_;
+    CertCache                                   certCache_;
     std::vector<std::shared_ptr<ProxySession>>  sessions_;
 };
 

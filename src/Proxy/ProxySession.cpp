@@ -4,8 +4,11 @@
 namespace DeepSeer
 {
 
-ProxySession::ProxySession(Socket clientSocket, EventLoop& loop)
+ProxySession::ProxySession(Socket clientSocket, EventLoop& loop,
+                           CertGenerator* certGen, CertCache* certCache)
     : loop_{loop}
+    , certGen_{certGen}
+    , certCache_{certCache}
 {
     auto r = clientSocket.setNonblocking();
     client_ = std::make_shared<Connection>(std::move(clientSocket), loop_);
@@ -173,6 +176,7 @@ ProxySession::handleConnect(HttpRequest const& req)
         host = req.url;
     }
 
+    connectHostname_ = host;
     Logger::info("CONNECT tunnel to {}:{}", host, port);
     connectUpstream(host, port);
 }
@@ -180,10 +184,101 @@ ProxySession::handleConnect(HttpRequest const& req)
 void
 ProxySession::startTunnel()
 {
+    // If we have CertGenerator, perform TLS interception
+    if (certGen_) {
+        startTlsMitm(connectHostname_);
+        return ;
+    }
+
+    // Otherwise, plain tunnel (passthrough, no interception)
     isTunnel_ = true;
     client_->write("HTTP/1.1 200 Connection Established\r\n\r\n");
     setupUpstreamCallbacks();
     upstream_->startRead();
+}
+
+void
+ProxySession::startTlsMitm(std::string const& hostname)
+{
+    isTlsMitm_ = true;
+    auto self = shared_from_this();
+
+    // Send 200 to client and stop reading (TLS will take over the socket).
+    client_->write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    client_->stopRead();
+
+    // 2. Establish TLS with upstream — extract socket from Connection
+    auto upstreamCtx = SSL_CTX_new(TLS_client_method());
+    SSL_CTX_set_verify(upstreamCtx, SSL_VERIFY_NONE, nullptr);
+
+    auto upstreamSock = upstream_->releaseSocket();
+    upstream_.reset();
+    tlsUpstream_ = std::make_shared<TlsConnection>(
+        std::move(upstreamSock), upstreamCtx, loop_, false);
+
+    tlsUpstream_->startHandshake(
+        [self, upstreamCtx, hostname]() {
+            Logger::debug("TLS handshake with upstream complete for {}", hostname);
+
+            // Generate a forged certificate for this hostname
+            auto certResult = self->certGen_->generate(hostname);
+            if (!certResult) {
+                Logger::warn("Cert generation failed: {}", certResult.error().message);
+                SSL_CTX_free(upstreamCtx);
+                self->close();
+                return;
+            }
+
+            // Create SSL_CTX with the forged cert for the client side
+            auto clientCtx = SSL_CTX_new(TLS_server_method());
+            SSL_CTX_use_certificate(clientCtx, certResult->cert.get());
+            SSL_CTX_use_PrivateKey(clientCtx, certResult->key.get());
+
+            if (self->certCache_) {
+                self->certCache_->put(hostname, clientCtx);
+            }
+
+            // Start TLS handshake with the client (as server, using forged cert)
+            auto clientSock = self->client_->releaseSocket();
+            self->client_.reset();
+            self->tlsClient_ = std::make_shared<TlsConnection>(
+                std::move(clientSock), clientCtx, self->loop_, true);
+
+            self->tlsClient_->startHandshake(
+                [self, clientCtx, upstreamCtx]() {
+                    Logger::debug("TLS handshake with client complete (MITM active)");
+
+                    // Both TLS connections established. Bridge decrypted data.
+                    self->tlsClient_->onData([self](Buffer& data) {
+                        Logger::debug("MITM client->upstream: {} bytes", data.length());
+                        self->tlsUpstream_->write(data);
+                    });
+                    self->tlsClient_->onClose([self]() { self->close(); });
+
+                    self->tlsUpstream_->onData([self](Buffer& data) {
+                        Logger::debug("MITM upstream->client: {} bytes", data.length());
+                        self->tlsClient_->write(data);
+                    });
+                    self->tlsUpstream_->onClose([self]() { self->close(); });
+
+                    self->tlsClient_->startRead();
+                    self->tlsUpstream_->startRead();
+
+                    SSL_CTX_free(clientCtx);
+                    SSL_CTX_free(upstreamCtx);
+                },
+                [self, clientCtx, upstreamCtx](Error err) {
+                    Logger::warn("Client TLS handshake failed: {}", err.message);
+                    SSL_CTX_free(clientCtx);
+                    SSL_CTX_free(upstreamCtx);
+                    self->close();
+                });
+        },
+        [self, upstreamCtx](Error err) {
+            Logger::warn("Upstream TLS handshake failed: {}", err.message);
+            SSL_CTX_free(upstreamCtx);
+            self->close();
+        });
 }
 
 // ---------------------------------------------------------------------------

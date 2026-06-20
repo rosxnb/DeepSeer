@@ -53,6 +53,9 @@ add_library(${CORE_LIB} STATIC
     src/Net/Socket.cpp
     src/Proxy/ProxySession.cpp
     src/Server/Server.cpp
+    src/Tls/CertCache.cpp
+    src/Tls/CertGenerator.cpp
+    src/Tls/TlsConnection.cpp
 )
 
 # Platform-specific event loop
@@ -70,6 +73,8 @@ target_include_directories(${CORE_LIB}
 
 target_link_libraries(${CORE_LIB}
     PUBLIC
+        OpenSSL::SSL
+        OpenSSL::Crypto
         Threads::Threads
         llhttp_static
 )

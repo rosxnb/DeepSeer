@@ -25,6 +25,16 @@ Connection::startRead()
 }
 
 void
+Connection::stopRead()
+{
+    if (closed_)
+        return ;
+
+    reading_ = false;
+    updateEvents();
+}
+
+void
 Connection::write(Buffer& data)
 {
     if (closed_)

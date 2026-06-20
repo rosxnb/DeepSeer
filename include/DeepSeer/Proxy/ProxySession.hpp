@@ -4,6 +4,9 @@
 #include <DeepSeer/Event/EventLoop.hpp>
 #include <DeepSeer/Http/Http1/Codec.hpp>
 #include <DeepSeer/Net/Connection.hpp>
+#include <DeepSeer/Tls/CertCache.hpp>
+#include <DeepSeer/Tls/CertGenerator.hpp>
+#include <DeepSeer/Tls/TlsConnection.hpp>
 
 #include <memory>
 #include <string>
@@ -14,7 +17,8 @@ namespace DeepSeer
 class ProxySession : public std::enable_shared_from_this<ProxySession>
 {
 public:
-    ProxySession(Socket clientSocket, EventLoop& loop);
+    ProxySession(Socket clientSocket, EventLoop& loop,
+                 CertGenerator* certGen = nullptr, CertCache* certCache = nullptr);
 
     /// Begin processing the client connection
     void start();
@@ -36,6 +40,7 @@ private:
     // --- CONNECT tunnel ---
     void handleConnect(HttpRequest const& req);
     void startTunnel();
+    void startTlsMitm(std::string const& hostname);
 
     // --- Upstream ---
     void connectUpstream(std::string const& host, uint16_t port);
@@ -51,15 +56,22 @@ private:
     EventLoop& loop_;
     ConnectionPtr client_;
     ConnectionPtr upstream_;
+    TlsConnectionPtr tlsClient_; // TLS wrapped client for MITM
+    TlsConnectionPtr tlsUpstream_; // TLS wrapped upstream for MITM
     Socket connectingSocket_; // Held during non-blocking connect, before Connection wraps it
+
+    CertGenerator* certGen_ {nullptr};
+    CertCache* certCache_ {nullptr};
 
     Http1Codec clientCodec_{Http1Codec::Type::Request};
     Http1Codec upstreamCodec_{Http1Codec::Type::Response};
 
     HttpRequest currentRequest_;
+    std::string connectHostname_;
     Buffer pendingBody_;
     bool isTunnel_ {false};
     bool isConnect_ {false}; // True if handling CONNECT
+    bool isTlsMitm_ {false};
     bool closed_ {false};
 };
 
