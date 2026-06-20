@@ -1,0 +1,65 @@
+#pragma once
+
+/// @file Server.hpp
+/// @brief Top-level DeepSeer MITM proxy server.
+///
+/// ## Responsibilities
+///
+/// - Accepts TCP connections via a Listener
+/// - Creates a ProxySession per connection
+/// - Optionally loads CA cert/key for TLS MITM
+/// - Manages session lifecycle (cleanup of closed sessions)
+/// - Signal-safe shutdown via stop()
+///
+/// ## Current Design (single-threaded)
+///
+/// The server runs on a single EventLoop. All connections share the same
+/// thread. This is sufficient for development and moderate traffic.
+///
+/// ## Planned: Multi-threaded Worker Model (Envoy-inspired)
+///
+/// The intended architecture is one EventLoop per worker thread:
+/// 1. Main thread: Listener accepts connections
+/// 2. Main thread: round-robins each new connection to a Worker
+/// 3. Worker thread: owns EventLoop + ProxySessions
+/// 4. No shared mutable state on hot path
+///
+/// If not provided:
+/// - CONNECT requests create plain TCP tunnels (no HTTPS inspection)
+/// - HTTP proxy still works normally
+
+
+#include <DeepSeer/Event/EventLoop.hpp>
+#include <DeepSeer/Net/Address.hpp>
+#include <DeepSeer/Net/Listener.hpp>
+#include <DeepSeer/Proxy/ProxySession.hpp>
+
+#include <memory>
+#include <vector>
+
+namespace DeepSeer
+{
+
+/// The DeepSeer MITM proxy server. Accepts connections and creates proxy sessions.
+/// Currently single-threaded. Worker threads will be added later.
+class Server
+{
+public:
+    explicit Server(Address listenAddr);
+
+    /// Start the server. Blocks until stop() is called.
+    VoidResult run();
+
+    /// Stop the server (thread-safe).
+    void stop();
+
+private:
+    void onNewConnection(Socket client, Address addr);
+
+    Address                                     listenAddr_;
+    std::unique_ptr<EventLoop>                  loop_;
+    std::unique_ptr<Listener>                   listener_;
+    std::vector<std::shared_ptr<ProxySession>>  sessions_;
+};
+
+} // DeepSeer

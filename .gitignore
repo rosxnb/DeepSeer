@@ -2,6 +2,9 @@
 build/
 out/
 cmake-build-*/
+DeepSeerLogs/
+[Ll]ogs/
+*.log
 
 # IDE
 .idea/

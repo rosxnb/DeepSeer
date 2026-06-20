@@ -10,6 +10,19 @@ option(DEEPSEER_BUILD_TESTS  "Build test suite"                ON)
 option(DEEPSEER_ENABLE_ASAN  "Enable AddressSanitizer + UBSan" OFF)
 option(DEEPSEER_ENABLE_TSAN  "Enable ThreadSanitizer"          OFF)
 
+
+# --- Platform Detection ---
+if(APPLE)
+    add_compile_definitions(PLATFORM_MACOS)
+    message(STATUS "Platform: macOS")
+elseif(UNIX)
+    add_compile_definitions(PLATFORM_LINUX)
+    message(STATUS "Platform: Linux")
+elseif(WIN32)
+    add_compile_definitions(PLATFORM_WINDOWS)
+    message(STATUS "Platform: Windows")
+endif()
+
 # --- CMake modules ---
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 include(CompilerOptions)
@@ -28,7 +41,18 @@ endif()
 # --- Core library ---
 set(CORE_LIB DeepSeerLib)
 add_library(${CORE_LIB} STATIC
-    src/Config/Config.cpp
+    src/Core/Buffer.cpp
+    src/Event/EventLoop.cpp
+    src/Http/Http1/Codec.cpp
+    src/Log/ConsoleSink.cpp
+    src/Log/FileSink.cpp
+    src/Log/Logger.cpp
+    src/Net/Address.cpp
+    src/Net/Connection.cpp
+    src/Net/Listener.cpp
+    src/Net/Socket.cpp
+    src/Proxy/ProxySession.cpp
+    src/Server/Server.cpp
 )
 
 # Platform-specific event loop
@@ -47,6 +71,7 @@ target_include_directories(${CORE_LIB}
 target_link_libraries(${CORE_LIB}
     PUBLIC
         Threads::Threads
+        llhttp_static
 )
 
 deepseer_set_compiler_options(${CORE_LIB})
