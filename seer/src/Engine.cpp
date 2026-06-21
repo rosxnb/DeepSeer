@@ -71,7 +71,10 @@ Engine::workerLoop()
             queue_.pop_front();
         }
 
+        auto t0 = std::chrono::steady_clock::now();
         auto result = classify(std::span<std::byte const>{item.payload});
+        auto t1 = std::chrono::steady_clock::now();
+        result.inferenceTime = std::chrono::duration<double>(t1 - t0);
         if (item.onResult) {
             item.onResult(std::move(result));
         }

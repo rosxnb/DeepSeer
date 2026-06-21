@@ -32,7 +32,7 @@ int main(
     DeepSeer::FileSinkConfig logFileConfig { .path = std::string{"DeepSeerLogs/proxylog"} };
     auto fileSink = std::make_shared<DeepSeer::FileSink>(logFileConfig);
     auto consoleSink = std::make_shared<DeepSeer::ConsoleSink>();
-    DeepSeer::Logger::init(DeepSeer::LogLevel::Debug, { fileSink, consoleSink });
+    DeepSeer::Logger::init(DeepSeer::LogLevel::Info, { fileSink, consoleSink });
     DeepSeer::Logger::info("DeepSeer version: {}", kVersion);
 
     uint16_t port = 8080;
@@ -75,8 +75,9 @@ int main(
                 [&engine](std::span<std::byte const> payload, std::string_view url) {
                     engine->submit(payload, std::string{url},
                         [url = std::string{url}](Seer::InferenceResult r) {
-                            DeepSeer::Logger::info("[AI] {} -> {} ({:.2f})",
-                                url, r.label, r.confidence);
+                            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(r.inferenceTime).count();
+                            DeepSeer::Logger::info("[AI] {} -> {} ({:.2f}) [{} ms / {:.3f} s]",
+                                url, r.label, r.confidence, ms, r.inferenceTime.count());
                         });
                 });
             DeepSeer::Logger::info("Seer AI engine loaded (model: {})", modelPath);

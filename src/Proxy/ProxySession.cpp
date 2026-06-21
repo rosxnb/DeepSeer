@@ -63,6 +63,10 @@ ProxySession::close()
         client_->close();
     if (upstream_)
         upstream_->close();
+    if (tlsClient_)
+        tlsClient_->close();
+    if (tlsUpstream_)
+        tlsUpstream_->close();
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +112,13 @@ ProxySession::onRequest(HttpRequest req)
         return;
     }
 
+    if (isTlsMitm_) {
+        // In MITM mode, upstream TLS connection is already established.
+        // Just encode and forward the request directly.
+        forwardRequest();
+        return;
+    }
+
     auto port = currentRequest_.port;
     if (port == 0)
         port = 80;
@@ -120,10 +131,7 @@ ProxySession::onRequestBody(Buffer& body, bool /*end_stream*/)
     if (body.empty())
         return;
     pendingBody_.move(body);
-
-    if (upstream_ && upstream_->connected()) {
-        upstream_->write(pendingBody_);
-    }
+    writeToUpstream(pendingBody_);
 }
 
 // ---------------------------------------------------------------------------
@@ -132,18 +140,24 @@ ProxySession::onRequestBody(Buffer& body, bool /*end_stream*/)
 
 void ProxySession::onResponse(HttpResponse resp)
 {
-    // llhttp delivers decoded body (de-chunked), so these framing headers
-    // from the upstream no longer apply. Remove them — the client will use
-    // connection close to detect the end of the response.
-    resp.headers.remove("Transfer-Encoding");
-    resp.headers.remove("Content-Length");
+    if (isTlsMitm_) {
+        // In MITM mode, keep Content-Length (it's accurate for the decoded body).
+        // Strip Transfer-Encoding since llhttp de-chunks the body — we'll use
+        // Content-Length for framing instead.  If the original response was
+        // chunked (no Content-Length), we need to buffer the body and add one,
+        // but most responses include Content-Length so this handles the common case.
+        resp.headers.remove("Transfer-Encoding");
+    } else {
+        // For plain HTTP, strip all framing headers — the client will use
+        // connection close to detect the end of the response.
+        resp.headers.remove("Transfer-Encoding");
+        resp.headers.remove("Content-Length");
+    }
 
     Buffer out;
     Http1Codec encoder;
     encoder.encodeResponse(resp, out);
-    if (client_ && client_->connected()) {
-        client_->write(out);
-    }
+    writeToClient(out);
 }
 
 void ProxySession::onResponseBody(Buffer& body, bool /*end_stream*/)
@@ -155,15 +169,15 @@ void ProxySession::onResponseBody(Buffer& body, bool /*end_stream*/)
         }
     }
 
-    if (!body.empty() && client_ && client_->connected()) {
-        client_->write(body);
+    if (!body.empty()) {
+        writeToClient(body);
     }
 }
 
 void
 ProxySession::onResponseComplete()
 {
-    // Fire payload inspector before closing
+    // Fire payload inspector
     if (payloadInspector_ && !responseBody_.empty()) {
         auto bodyBytes = responseBody_.linearize();
         payloadInspector_(bodyBytes, currentRequest_.url);
@@ -172,7 +186,13 @@ ProxySession::onResponseComplete()
     pendingBody_ = Buffer{};
     responseBody_ = Buffer{};
 
-    // Signal end-of-response to the client by closing the connection.
+    if (isTlsMitm_) {
+        // In MITM mode, the TLS tunnel stays open for subsequent requests.
+        // llhttp resets internally after each complete message.
+        return;
+    }
+
+    // For plain HTTP, signal end-of-response by closing the connection.
     // Without Content-Length or chunked encoding, close is the only
     // way the client knows the body is complete.
     close();
@@ -269,16 +289,46 @@ ProxySession::startTlsMitm(std::string const& hostname)
                 [self, clientCtx, upstreamCtx]() {
                     Logger::debug("TLS handshake with client complete (MITM active)");
 
-                    // Both TLS connections established. Bridge decrypted data.
+                    // Both TLS connections established. Route decrypted data
+                    // through HTTP codecs so request/response callbacks fire
+                    // (enabling AI payload inspection).
+
+                    // Reset codecs: the old clientCodec_ parsed CONNECT which
+                    // puts llhttp into "upgrade" state. We need fresh parsers
+                    // for the decrypted HTTP traffic inside the TLS tunnel.
+                    self->clientCodec_ = Http1Codec{Http1Codec::Type::Request};
+                    self->upstreamCodec_ = Http1Codec{Http1Codec::Type::Response};
+
+                    self->clientCodec_.setCallbacks({
+                        .onRequest = [self](HttpRequest req) { self->onRequest(std::move(req)); },
+                        .onBody = [self](Buffer& body, bool end) { self->onRequestBody(body, end); },
+                    });
+
+                    self->upstreamCodec_.setCallbacks({
+                        .onResponse = [self](HttpResponse resp) { self->onResponse(std::move(resp)); },
+                        .onBody = [self](Buffer& body, bool end) { self->onResponseBody(body, end); },
+                        .onMessageComplete = [self]() { self->onResponseComplete(); },
+                    });
+
+                    // Client → codec → parse request → forward to upstream
                     self->tlsClient_->onData([self](Buffer& data) {
                         Logger::debug("MITM client->upstream: {} bytes", data.length());
-                        self->tlsUpstream_->write(data);
+                        auto result = self->clientCodec_.decode(data);
+                        if (!result) {
+                            Logger::warn("MITM client parse error: {}", result.error().message);
+                            self->close();
+                        }
                     });
                     self->tlsClient_->onClose([self]() { self->close(); });
 
+                    // Upstream → codec → parse response → forward to client
                     self->tlsUpstream_->onData([self](Buffer& data) {
                         Logger::debug("MITM upstream->client: {} bytes", data.length());
-                        self->tlsClient_->write(data);
+                        auto result = self->upstreamCodec_.decode(data);
+                        if (!result) {
+                            Logger::warn("MITM upstream parse error: {}", result.error().message);
+                            self->close();
+                        }
                     });
                     self->tlsUpstream_->onClose([self]() { self->close(); });
 
@@ -372,8 +422,12 @@ ProxySession::setupUpstreamCallbacks()
 void
 ProxySession::forwardRequest()
 {
-    setupUpstreamCallbacks();
-    upstream_->startRead();
+    if (!isTlsMitm_) {
+        // For plain HTTP, set up callbacks on the upstream Connection.
+        // In MITM mode, TLS callbacks are already wired in startTlsMitm().
+        setupUpstreamCallbacks();
+        upstream_->startRead();
+    }
 
     // Convert proxy-style absolute URL to origin-form path
     auto& url = currentRequest_.url;
@@ -392,10 +446,10 @@ ProxySession::forwardRequest()
     Http1Codec encoder;
     encoder.encodeRequest(currentRequest_, out);
     Logger::debug("Forwarding request ({} bytes): {}", out.length(), out.toString().substr(0, 80));
-    upstream_->write(out);
+    writeToUpstream(out);
 
     if (!pendingBody_.empty()) {
-        upstream_->write(pendingBody_);
+        writeToUpstream(pendingBody_);
     }
 }
 
@@ -404,9 +458,7 @@ ProxySession::onUpstreamData(Buffer& data)
 {
     Logger::debug("Upstream data received: {} bytes", data.length());
     if (isTunnel_) {
-        if (client_ && client_->connected()) {
-            client_->write(data);
-        }
+        writeToClient(data);
         return;
     }
 
@@ -439,9 +491,45 @@ ProxySession::sendError(uint16_t status, std::string const& reason)
     Buffer out;
     Http1Codec encoder;
     encoder.encodeResponse(resp, out);
-    if (client_ && client_->connected()) {
-        client_->write(out);
+    writeToClient(out);
+}
+
+void
+ProxySession::writeToClient(Buffer& data)
+{
+    if (isTlsMitm_ && tlsClient_) {
+        tlsClient_->write(data);
+    } else if (client_ && client_->connected()) {
+        client_->write(data);
     }
+}
+
+void
+ProxySession::writeToClient(std::string_view data)
+{
+    if (isTlsMitm_ && tlsClient_) {
+        tlsClient_->write(data);
+    } else if (client_ && client_->connected()) {
+        client_->write(data);
+    }
+}
+
+void
+ProxySession::writeToUpstream(Buffer& data)
+{
+    if (isTlsMitm_ && tlsUpstream_) {
+        tlsUpstream_->write(data);
+    } else if (upstream_ && upstream_->connected()) {
+        upstream_->write(data);
+    }
+}
+
+bool
+ProxySession::clientConnected() const
+{
+    if (isTlsMitm_)
+        return tlsClient_ != nullptr;
+    return client_ && client_->connected();
 }
 
 } // DeepSeer

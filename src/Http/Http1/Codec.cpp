@@ -28,6 +28,48 @@ Http1Codec::Http1Codec(Type type)
     parser_.data = this;
 }
 
+Http1Codec::Http1Codec(Http1Codec&& other) noexcept
+    : parser_(other.parser_)
+    , settings_(other.settings_)
+    , callbacks_(std::move(other.callbacks_))
+    , currentRequest_(std::move(other.currentRequest_))
+    , currentResponse_(std::move(other.currentResponse_))
+    , currentHeaderField_(std::move(other.currentHeaderField_))
+    , currentHeaderValue_(std::move(other.currentHeaderValue_))
+    , buildingRequest_(other.buildingRequest_)
+    , inHeaderValue_(other.inHeaderValue_)
+{
+    parser_.data = this;
+    parser_.settings = &settings_;
+}
+
+Http1Codec&
+Http1Codec::operator=(Http1Codec&& other) noexcept
+{
+    Http1Codec{std::move(other)}.swap(*this);
+    return *this;
+}
+
+void
+Http1Codec::swap(Http1Codec& other) noexcept
+{
+    std::swap(parser_, other.parser_);
+    std::swap(settings_, other.settings_);
+    std::swap(callbacks_, other.callbacks_);
+    std::swap(currentRequest_, other.currentRequest_);
+    std::swap(currentResponse_, other.currentResponse_);
+    std::swap(currentHeaderField_, other.currentHeaderField_);
+    std::swap(currentHeaderValue_, other.currentHeaderValue_);
+    std::swap(buildingRequest_, other.buildingRequest_);
+    std::swap(inHeaderValue_, other.inHeaderValue_);
+
+    // Fix up internal pointers after swap
+    parser_.data = this;
+    parser_.settings = &settings_;
+    other.parser_.data = &other;
+    other.parser_.settings = &other.settings_;
+}
+
 VoidResult
 Http1Codec::decode(std::span<std::byte const> data)
 {

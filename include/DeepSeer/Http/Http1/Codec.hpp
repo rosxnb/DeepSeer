@@ -54,6 +54,13 @@ public:
 
     explicit Http1Codec(Type type = Type::Both);
 
+    Http1Codec(Http1Codec const&) = delete;
+    Http1Codec& operator=(Http1Codec const&) = delete;
+
+    Http1Codec(Http1Codec&& other) noexcept;
+    Http1Codec& operator=(Http1Codec&& other) noexcept;
+    void swap(Http1Codec& other) noexcept;
+
     void setCallbacks(CodecCallbacks cbs) override { callbacks_ = std::move(cbs); }
 
     using HttpCodec::decode; // Bring in decode(Buffer&) convenience overload

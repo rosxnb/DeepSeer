@@ -120,19 +120,24 @@ cmake --build --preset debug
 ### 5. Run the proxy with AI classification
 
 ```bash
+# Plain HTTP
 ./build/debug/bin/DeepSeer --model models/magika.weights
 
 # In another terminal:
 curl -v http://example.com --proxy "127.0.0.1:8080"
-# Proxy logs will show: [AI] / -> html (0.99)
+# Proxy logs: [AI] / -> html (0.99) [1306 ms / 1.307 s]
 ```
 
-With TLS MITM:
+With TLS MITM (classification works on decrypted HTTPS traffic):
 
 ```bash
 ./build/debug/bin/DeepSeer \
   --ca-cert ca.crt --ca-key ca.key \
   --model models/magika.weights
+
+# In another terminal:
+curl -v https://httpbin.org/get --proxy "127.0.0.1:8080"
+# Proxy logs: [AI] /get -> json (0.99) [1306 ms / 1.307 s]
 ```
 
 ---

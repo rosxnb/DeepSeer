@@ -61,6 +61,10 @@ private:
     // --- Helpers ---
     void sendError(uint16_t status, const std::string& reason);
     void setupUpstreamCallbacks();
+    void writeToClient(Buffer& data);
+    void writeToClient(std::string_view data);
+    void writeToUpstream(Buffer& data);
+    bool clientConnected() const;
 
     EventLoop& loop_;
     ConnectionPtr client_;
