@@ -40,7 +40,7 @@ cmake --build --preset release
 ### HTTP-only (no TLS interception)
 
 ```bash
-./build/debug/DeepSeer
+./build/debug/bin/DeepSeer
 ```
 
 HTTPS CONNECT requests are tunneled as opaque TCP — the proxy cannot inspect the encrypted traffic.
@@ -68,7 +68,7 @@ sudo update-ca-certificates
 Start the proxy with the CA:
 
 ```bash
-./build/debug/DeepSeer --ca-cert ca.crt --ca-key ca.key
+./build/debug/bin/DeepSeer --ca-cert ca.crt --ca-key ca.key
 ```
 
 ### CLI options
@@ -103,11 +103,11 @@ Stop the server with `Ctrl+C` (SIGINT) or `SIGTERM`.
 ctest --preset debug
 
 # Run a specific test binary
-./build/debug/test/TestConnection
-./build/debug/test/TestEventLoop
-./build/debug/test/TestBuffer
-./build/debug/test/TestLogger
-./build/debug/test/TestHttp1Codec
+./build/debug/bin/TestConnection
+./build/debug/bin/TestEventLoop
+./build/debug/bin/TestBuffer
+./build/debug/bin/TestLogger
+./build/debug/bin/TestHttp1Codec
 ```
 
 ## Project structure

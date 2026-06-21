@@ -90,8 +90,8 @@
         },
         {
             "name": "release",
-            "displayName": "Release (GCC)",
-            "inherits": ["gcc-macos", "gcc-linux", "gcc-windows"],
+            "displayName": "Release (Clang on macOS, GCC on Linux)",
+            "inherits": ["clang-macos", "gcc-linux", "gcc-windows"],
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "DEEPSEER_BUILD_TESTS": "OFF"

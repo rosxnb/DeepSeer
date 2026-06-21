@@ -4,8 +4,9 @@
 #include <sys/event.h>
 #include <unistd.h>
 
-#include <stdexcept>
+#include <cstring>
 #include <format>
+#include <stdexcept>
 
 #include <DeepSeer/Log/Logger.hpp>
 

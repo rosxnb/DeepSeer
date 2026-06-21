@@ -113,14 +113,14 @@ cmake --preset debug
 cmake --build --preset debug
 
 # Run Seer tests
-./build/debug/seer/TestEngine
-./build/debug/seer/TestMagikaModel
+./build/debug/bin/TestEngine
+./build/debug/bin/TestMagikaModel
 ```
 
 ### 5. Run the proxy with AI classification
 
 ```bash
-./build/debug/DeepSeer --model models/magika.weights
+./build/debug/bin/DeepSeer --model models/magika.weights
 
 # In another terminal:
 curl -v http://example.com --proxy "127.0.0.1:8080"
@@ -130,7 +130,7 @@ curl -v http://example.com --proxy "127.0.0.1:8080"
 With TLS MITM:
 
 ```bash
-./build/debug/DeepSeer \
+./build/debug/bin/DeepSeer \
   --ca-cert ca.crt --ca-key ca.key \
   --model models/magika.weights
 ```
@@ -444,8 +444,8 @@ When reimplementing a model from ONNX, don't assume standard semantics for opera
 Run tests:
 
 ```bash
-./build/debug/seer/TestEngine
-./build/debug/seer/TestMagikaModel   # run from project root (needs models/)
+./build/debug/bin/TestEngine
+./build/debug/bin/TestMagikaModel   # run from project root (needs models/)
 ```
 
 ---
