@@ -123,6 +123,9 @@ include/DeepSeer/
   Server/     Top-level server, accept loop
   Tls/        TLS interception: CertGenerator, CertCache, TlsConnection
 src/          Implementation files (mirrors include/ layout)
+seer/         AI inference library (Magika content classifier, see seer/README.md)
 test/         GoogleTest test suites
-tools/        Helper scripts (gen_ca.sh)
+tools/        Helper scripts (gen_ca.sh, extract_magika_weights.py)
+models/       Model weights (gitignored, see seer/README.md for setup)
+docs/         Research reference documents
 ```

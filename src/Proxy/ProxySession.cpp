@@ -15,6 +15,12 @@ ProxySession::ProxySession(Socket clientSocket, EventLoop& loop,
 }
 
 void
+ProxySession::setPayloadInspector(PayloadInspector inspector)
+{
+    payloadInspector_ = std::move(inspector);
+}
+
+void
 ProxySession::start()
 {
     auto self = shared_from_this();
@@ -142,6 +148,13 @@ void ProxySession::onResponse(HttpResponse resp)
 
 void ProxySession::onResponseBody(Buffer& body, bool /*end_stream*/)
 {
+    // Accumulate for AI inspection (up to cap)
+    if (payloadInspector_ && responseBody_.length() < kMaxInspectBytes) {
+        for (auto const& slice : body.slices()) {
+            responseBody_.add(slice.data());
+        }
+    }
+
     if (!body.empty() && client_ && client_->connected()) {
         client_->write(body);
     }
@@ -150,7 +163,14 @@ void ProxySession::onResponseBody(Buffer& body, bool /*end_stream*/)
 void
 ProxySession::onResponseComplete()
 {
+    // Fire payload inspector before closing
+    if (payloadInspector_ && !responseBody_.empty()) {
+        auto bodyBytes = responseBody_.linearize();
+        payloadInspector_(bodyBytes, currentRequest_.url);
+    }
+
     pendingBody_ = Buffer{};
+    responseBody_ = Buffer{};
 
     // Signal end-of-response to the client by closing the connection.
     // Without Content-Length or chunked encoding, close is the only

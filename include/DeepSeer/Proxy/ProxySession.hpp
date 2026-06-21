@@ -8,17 +8,26 @@
 #include <DeepSeer/Tls/CertGenerator.hpp>
 #include <DeepSeer/Tls/TlsConnection.hpp>
 
+#include <cstddef>
+#include <functional>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace DeepSeer
 {
+
+using PayloadInspector = std::function<void(std::span<std::byte const> payload,
+                                            std::string_view url)>;
 
 class ProxySession : public std::enable_shared_from_this<ProxySession>
 {
 public:
     ProxySession(Socket clientSocket, EventLoop& loop,
                  CertGenerator* certGen = nullptr, CertCache* certCache = nullptr);
+
+    /// Register a payload inspector callback for response bodies.
+    void setPayloadInspector(PayloadInspector inspector);
 
     /// Begin processing the client connection
     void start();
@@ -69,10 +78,14 @@ private:
     HttpRequest currentRequest_;
     std::string connectHostname_;
     Buffer pendingBody_;
+    Buffer responseBody_;           // Accumulated response body for AI inspection
+    PayloadInspector payloadInspector_;
     bool isTunnel_ {false};
     bool isConnect_ {false}; // True if handling CONNECT
     bool isTlsMitm_ {false};
     bool closed_ {false};
+
+    static constexpr size_t kMaxInspectBytes = 16 * 1024 * 1024; // 16 MB cap
 };
 
 } // DeepSeer

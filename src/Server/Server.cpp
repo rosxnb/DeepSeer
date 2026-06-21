@@ -10,6 +10,12 @@ Server::Server(Address listenAddr, std::string caCertPath, std::string caKeyPath
     , caKeyPath_{std::move(caKeyPath)}
 { }
 
+void
+Server::setPayloadInspector(PayloadInspector inspector)
+{
+    payloadInspector_ = std::move(inspector);
+}
+
 VoidResult
 Server::run()
 {
@@ -65,6 +71,8 @@ Server::onNewConnection(Socket client, [[maybe_unused]] Address addr)
 
     CertGenerator* genPtr = certGen_.has_value() ? &*certGen_ : nullptr;
     auto session = std::make_shared<ProxySession>(std::move(client), *loop_, genPtr, &certCache_);
+    if (payloadInspector_)
+        session->setPayloadInspector(payloadInspector_);
     sessions_.push_back(session);
     session->start();
 }

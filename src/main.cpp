@@ -3,6 +3,10 @@
 #include <DeepSeer/Log/Logger.hpp>
 #include <DeepSeer/Server/Server.hpp>
 
+#ifdef DEEPSEER_HAS_SEER
+#include <Seer/Magika/MagikaEngine.hpp>
+#endif
+
 #include <csignal>
 
 namespace
@@ -33,6 +37,7 @@ int main(
 
     uint16_t port = 8080;
     std::string caCert, caKey;
+    std::string modelPath;
 
     for (int i = 1; i < argc; ++i) {
         auto arg = std::string_view{argv[i]};
@@ -43,6 +48,8 @@ int main(
             caCert = argv[++i];
         if (arg == "--ca-key" && i + 1 < argc)
             caKey = argv[++i];
+        if (arg == "--model" && i + 1 < argc)
+            modelPath = argv[++i];
     }
 
     std::signal(SIGINT, signalHandler);
@@ -55,6 +62,28 @@ int main(
     }
     DeepSeer::Server server{ *addr, caCert, caKey };
     gServer = &server;
+
+#ifdef DEEPSEER_HAS_SEER
+    std::unique_ptr<Seer::MagikaEngine> engine;
+    if (!modelPath.empty()) {
+        auto engineResult = Seer::MagikaEngine::create(modelPath);
+        if (!engineResult) {
+            DeepSeer::Logger::warn("Failed to load AI model: {}", engineResult.error().message);
+        } else {
+            engine = std::move(*engineResult);
+            server.setPayloadInspector(
+                [&engine](std::span<std::byte const> payload, std::string_view url) {
+                    engine->submit(payload, std::string{url},
+                        [url = std::string{url}](Seer::InferenceResult r) {
+                            DeepSeer::Logger::info("[AI] {} -> {} ({:.2f})",
+                                url, r.label, r.confidence);
+                        });
+                });
+            DeepSeer::Logger::info("Seer AI engine loaded (model: {})", modelPath);
+        }
+    }
+#endif
+
     auto result = server.run();
     if (!result) {
         DeepSeer::Logger::error("Error: {}", result.error().message);

@@ -16,6 +16,9 @@ compile_commands.json
 .DS_Store
 Thumbs.db
 
+# CMake test discovery artifacts
+cmake_test_discovery_*.json
+
 # Generated
 *.o
 *.a
@@ -30,6 +33,12 @@ Thumbs.db
 *.crt
 *.csr
 
+# Model weights and configs (download separately, see seer/README.md)
+models/
+
+# Python virtual environments
+tools/.venv/
+
 # Capture output
 capture/
 traffic.jsonl
@@ -37,3 +46,6 @@ certs/
 DeepSeerLogs/
 [Ll]ogs/
 *.log
+
+# Personal
+docs/

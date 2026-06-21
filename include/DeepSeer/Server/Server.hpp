@@ -35,8 +35,11 @@
 #include <DeepSeer/Proxy/ProxySession.hpp>
 #include <DeepSeer/Server/Server.hpp>
 
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -45,6 +48,11 @@ namespace DeepSeer
 
 /// The DeepSeer MITM proxy server. Accepts connections and creates proxy sessions.
 /// Currently single-threaded. Worker threads will be added later.
+/// Callback type for payload inspection. The proxy fires this with captured
+/// response bodies. Defined using only stdlib types — no Seer dependency.
+using PayloadInspector = std::function<void(std::span<std::byte const> payload,
+                                            std::string_view url)>;
+
 class Server
 {
 public:
@@ -52,6 +60,9 @@ public:
     /// @param caCertPath Path to CA certificate PEM (empty = no MITM).
     /// @param caKeyPath  Path to CA private key PEM (empty = no MITM).
     explicit Server(Address listenAddr, std::string caCertPath = {}, std::string caKeyPath = {});
+
+    /// Register a payload inspector callback (optional).
+    void setPayloadInspector(PayloadInspector inspector);
 
     /// Start the server. Blocks until stop() is called.
     VoidResult run();
@@ -70,6 +81,7 @@ private:
     std::optional<CertGenerator>                certGen_;
     CertCache                                   certCache_;
     std::vector<std::shared_ptr<ProxySession>>  sessions_;
+    PayloadInspector                            payloadInspector_;
 };
 
 } // DeepSeer

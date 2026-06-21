@@ -7,6 +7,7 @@ project(DeepSeer
 
 # --- Options ---
 option(DEEPSEER_BUILD_TESTS  "Build test suite"                ON)
+option(DEEPSEER_BUILD_SEER   "Build Seer AI inference library"  ON)
 option(DEEPSEER_ENABLE_ASAN  "Enable AddressSanitizer + UBSan" OFF)
 option(DEEPSEER_ENABLE_TSAN  "Enable ThreadSanitizer"          OFF)
 
@@ -82,14 +83,30 @@ target_link_libraries(${CORE_LIB}
 deepseer_set_compiler_options(${CORE_LIB})
 deepseer_enable_sanitizers(${CORE_LIB})
 
+# --- Enable testing early so subdirectories can register tests ---
+if(DEEPSEER_BUILD_TESTS)
+    enable_testing()
+endif()
+
+# --- Seer AI inference library ---
+if(DEEPSEER_BUILD_SEER)
+    add_subdirectory(seer)
+    message(STATUS "Seer AI inference library: enabled")
+else()
+    message(STATUS "Seer AI inference library: disabled")
+endif()
+
 # --- Executable ---
 add_executable(DeepSeer src/main.cpp)
 target_link_libraries(DeepSeer PRIVATE ${CORE_LIB})
+if(DEEPSEER_BUILD_SEER)
+    target_link_libraries(DeepSeer PRIVATE Seer)
+    target_compile_definitions(DeepSeer PRIVATE DEEPSEER_HAS_SEER)
+endif()
 deepseer_set_compiler_options(DeepSeer)
 deepseer_enable_sanitizers(DeepSeer)
 
 # --- Tests ---
 if(DEEPSEER_BUILD_TESTS)
-    enable_testing()
     add_subdirectory(test)
 endif()
