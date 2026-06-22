@@ -1,6 +1,9 @@
 # DeepSeer
 
-DeepSeer is a MITM proxy with deep packet inspection (DPI) capabilities. It intercepts HTTP and HTTPS traffic, inspects requests/responses, and forwards them transparently. For HTTPS, it performs TLS interception by dynamically generating per-host certificates signed by a local CA.
+DeepSeer is a MITM proxy with deep packet inspection (DPI) capabilities. It intercepts HTTP and HTTPS traffic,
+inspects requests/responses, and forwards them transparently. For HTTPS, it performs TLS interception by
+dynamically generating per-host certificates signed by a local CA. It is also has `Seer` capabilities. To active
+the `Seer` capabilities, refer to [this document](./SeerLib/README.md).
 
 ## Prerequisites
 
@@ -16,13 +19,13 @@ Dependencies fetched automatically via CMake FetchContent:
 ## Build
 
 ```bash
-# Configure and build (debug)
+# Configure and build
+cmake --preset <preset>
+cmake --build --preset <preset>
+
+# Debug build
 cmake --preset debug
 cmake --build --preset debug
-
-# Release build
-cmake --preset release
-cmake --build --preset release
 ```
 
 ### Build presets
@@ -53,7 +56,8 @@ Generate a local CA certificate:
 ./tools/gen_ca.sh <out-dir>
 ```
 
-This creates `ca.crt` and `ca.key` in the output directory. Trust the CA on your system so browsers/curl accept the forged certificates:
+This creates `ca.crt` and `ca.key` in the output directory. Trust the CA on your system so browsers/curl
+accept the forged certificates:
 
 ```bash
 # macOS
@@ -113,19 +117,9 @@ ctest --preset debug
 ## Project structure
 
 ```
-include/DeepSeer/
-  Core/       Buffer, types, error handling
-  Event/      Platform-abstracted event loop (kqueue/epoll)
-  Http/       HTTP codec (llhttp-based), message types, header map
-  Log/        Logger with pluggable sinks (console, file)
-  Net/        Socket, Address, Listener, Connection
-  Proxy/      ProxySession — per-connection proxy logic
-  Server/     Top-level server, accept loop
-  Tls/        TLS interception: CertGenerator, CertCache, TlsConnection
-src/          Implementation files (mirrors include/ layout)
-seer/         AI inference library (Magika content classifier, see seer/README.md)
-test/         GoogleTest test suites
-tools/        Helper scripts (gen_ca.sh, extract_magika_weights.py)
-models/       Model weights (gitignored, see seer/README.md for setup)
-docs/         Research reference documents
+DeepSeerLib/        Proxy Library
+Seer/               AI inference library (Magika content classifier, see seer/README.md)
+tools/              Helper scripts (gen_ca.sh, extract_magika_weights.py)
+models/             Model weights (gitignored, see Seer/README.md for setup)
+docs/               Research reference documents
 ```

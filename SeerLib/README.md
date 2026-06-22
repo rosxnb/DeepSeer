@@ -1,26 +1,31 @@
 # Seer: AI Inference Module for DeepSeer
 
-Seer is the AI inference library that powers content-type classification in the DeepSeer MITM proxy. It takes raw response bytes captured by the proxy and classifies them into 214 content types (HTML, JSON, PDF, JPEG, Python, etc.) using Google's Magika model -- reimplemented entirely in C++ with no external ML framework dependency.
+Seer is the AI inference library that powers content-type classification in the DeepSeer MITM proxy.
+It takes raw response bytes captured by the proxy and classifies them into 214 content types
+(HTML, JSON, PDF, JPEG, Python, etc.) using Google's Magika model -- reimplemented entirely in C++
+with no external ML framework dependency.
 
 ## Architecture Overview
 
 ```
 DeepSeer (proxy)                          Seer (AI)
-┌─────────────────────┐                  ┌──────────────────────┐
-│  ProxySession       │                  │  Engine (abstract)   │
-│    onResponseBody() │──accumulate──>   │    submit()          │
-│    onResponseComplete()──callback──>   │    ┌─────────────┐   │
-│                     │                  │    │ worker thread│   │
-│  Server             │                  │    │  classify()  │   │
-│    PayloadInspector │                  │    └─────────────┘   │
-└─────────────────────┘                  │                      │
-        ▲                                │  MagikaEngine        │
-        │ wired in main.cpp              │    MagikaModel       │
-        │ #ifdef DEEPSEER_HAS_SEER       │      predict()       │
-        └────────────────────────────────└──────────────────────┘
+┌────────────────────────┐                  ┌───────────────────────┐
+│  ProxySession          │                  │  Engine (abstract)    │
+│    onResponseBody()    │──accumulate──>   │    submit()           │
+│    onResponseComplete()│──callback────>   │    ┌──────────────┐   │
+│                        │                  │    │ worker thread│   │
+│  Server                │                  │    │  classify()  │   │
+│    PayloadInspector    │                  │    └──────────────┘   │
+└────────────────────────┘                  │                       │
+        ▲                                   │  MagikaEngine         │
+        │ wired in main.cpp                 │    MagikaModel        │
+        │ #ifdef DEEPSEER_HAS_SEER          │      predict()        │
+        └───────────────────────────────────└───────────────────────┘
 ```
 
-**Key design principle:** The proxy (`DeepSeerLib`) has zero compile-time dependency on Seer. The bridge is a `std::function` callback (`PayloadInspector`) defined using only stdlib types. Only `main.cpp` includes both `DeepSeer/` and `Seer/` headers, gated behind `#ifdef DEEPSEER_HAS_SEER`.
+**Key design principle:** The proxy (`DeepSeerLib`) has zero compile-time dependency on Seer. The bridge is a
+`std::function` callback (`PayloadInspector`) defined using only stdlib types. Only `main.cpp` includes both
+`DeepSeer/` and `Seer/` headers, gated behind `#ifdef DEEPSEER_HAS_SEER`.
 
 ### Directory Structure
 
@@ -46,7 +51,8 @@ seer/
 
 ### CMake Integration
 
-Seer produces `libSeer.a` as a static library with its own include path. It is gated by the `DEEPSEER_BUILD_SEER` CMake option (default: ON).
+Seer produces `libSeer.a` as a static library with its own include path. It is gated by the `DEEPSEER_BUILD_SEER`
+CMake option (default: ON).
 
 ```cmake
 # Root CMakeLists.txt
@@ -70,7 +76,8 @@ cmake --preset debug -DDEEPSEER_BUILD_SEER=OFF
 
 ### 1. Create Python environment for weight extraction
 
-The ONNX model from Google cannot be loaded directly in C++. We extract the weights into a compact binary format using a Python script. This only needs to be done once.
+The ONNX model from Google cannot be loaded directly in C++. We extract the weights into a compact binary format
+using a Python script.
 
 ```bash
 cd tools
@@ -104,7 +111,8 @@ python3 tools/extract_magika_weights.py \
   models/magika.weights
 ```
 
-This produces `models/magika.weights` (~3 MB), a compact binary file containing all 10 weight tensors and 214 class labels.
+This produces `models/magika.weights` (~3 MB), a compact binary file containing all 10 weight tensors
+and 214 class labels.
 
 ### 4. Build and test
 
@@ -146,7 +154,9 @@ curl -v https://httpbin.org/get --proxy "127.0.0.1:8080"
 
 ### What is Magika?
 
-[Magika](https://github.com/google/magika) is Google's file-type classifier, used in production at Gmail and Google Drive to classify hundreds of billions of files per week. It identifies 214 content types from raw bytes alone -- no file extensions, no MIME headers, no protocol-specific parsing.
+[Magika](https://github.com/google/magika) is Google's file-type classifier, used in production at Gmail and
+Google Drive to classify hundreds of billions of files per week. It identifies 214 content types from raw bytes
+alone -- no file extensions, no MIME headers, no protocol-specific parsing.
 
 We chose Magika because:
 
@@ -164,48 +174,48 @@ Input: 2048 int32 tokens
   Token values: 0-255 = byte values, 256 = padding token
 
   ┌───────────────────────────────────────────────────────────────────┐
-  │  Embedding: lookup table [257 vocab × 64 dim] + bias[64]        │
-  │  Output: [2048 × 64]                                            │
+  │  Embedding: lookup table [257 vocab × 64 dim] + bias[64]          │
+  │  Output: [2048 × 64]                                              │
   ├───────────────────────────────────────────────────────────────────┤
-  │  GELU activation (element-wise)                                 │
+  │  GELU activation (element-wise)                                   │
   ├───────────────────────────────────────────────────────────────────┤
-  │  Reshape: [2048 × 64] → [512 × 256]                            │
-  │  (groups of 4 positions × 64 dims → 256-dim vectors)            │
+  │  Reshape: [2048 × 64] → [512 × 256]                               │
+  │  (groups of 4 positions × 64 dims → 256-dim vectors)              │
   ├───────────────────────────────────────────────────────────────────┤
-  │  LayerNorm_0: normalize over axis 0 (512 positions)             │
-  │  scale[512], bias[512] — per-position, broadcast across 256 dim │
+  │  LayerNorm_0: normalize over axis 0 (512 positions)               │
+  │  scale[512], bias[512] — per-position, broadcast across 256 dim   │
   ├───────────────────────────────────────────────────────────────────┤
-  │  Conv1D: 256 input channels → 512 output channels, kernel=5    │
-  │  Output: [508 × 512]  (512 - 5 + 1 = 508 positions)            │
+  │  Conv1D: 256 input channels → 512 output channels, kernel=5       │
+  │  Output: [508 × 512]  (512 - 5 + 1 = 508 positions)               │
   ├───────────────────────────────────────────────────────────────────┤
-  │  GELU activation (element-wise)                                 │
+  │  GELU activation (element-wise)                                   │
   ├───────────────────────────────────────────────────────────────────┤
-  │  Global Max Pool: max over 508 positions → [512]                │
+  │  Global Max Pool: max over 508 positions → [512]                  │
   ├───────────────────────────────────────────────────────────────────┤
-  │  LayerNorm_1: standard normalize over 512 dims                  │
-  │  scale[512], bias[512] — per-element                            │
+  │  LayerNorm_1: standard normalize over 512 dims                    │
+  │  scale[512], bias[512] — per-element                              │
   ├───────────────────────────────────────────────────────────────────┤
-  │  Dense: [512] → [214] (matmul + bias)                           │
+  │  Dense: [512] → [214] (matmul + bias)                             │
   ├───────────────────────────────────────────────────────────────────┤
-  │  Softmax → 214 class probabilities                              │
+  │  Softmax → 214 class probabilities                                │
   └───────────────────────────────────────────────────────────────────┘
 ```
 
 ### Weight Tensors
 
-| Name | Shape | Parameters | Role |
-|------|-------|------------|------|
-| `embed_weight` | 257 x 64 | 16,448 | Byte embedding lookup table |
-| `embed_bias` | 64 | 64 | Embedding bias |
-| `ln0_scale` | 512 | 512 | LayerNorm_0 scale (per-position) |
-| `ln0_bias` | 512 | 512 | LayerNorm_0 bias (per-position) |
-| `conv_weight` | 512 x 256 x 5 | 655,360 | Conv1D kernel (83.5% of all params) |
-| `conv_bias` | 512 | 512 | Conv1D bias |
-| `ln1_scale` | 512 | 512 | LayerNorm_1 scale |
-| `ln1_bias` | 512 | 512 | LayerNorm_1 bias |
-| `output_weight` | 512 x 214 | 109,568 | Output dense layer |
-| `output_bias` | 214 | 214 | Output dense bias |
-| **Total** | | **784,214** | **~3 MB as float32** |
+| Name            | Shape         | Parameters  | Role                                |
+|-----------------|---------------|-------------|-------------------------------------|
+| `embed_weight`  | 257 x 64      | 16,448      | Byte embedding lookup table         |
+| `embed_bias`    | 64            | 64          | Embedding bias                      |
+| `ln0_scale`     | 512           | 512         | LayerNorm_0 scale (per-position)    |
+| `ln0_bias`      | 512           | 512         | LayerNorm_0 bias (per-position)     |
+| `conv_weight`   | 512 x 256 x 5 | 655,360     | Conv1D kernel (83.5% of all params) |
+| `conv_bias`     | 512           | 512         | Conv1D bias                         |
+| `ln1_scale`     | 512           | 512         | LayerNorm_1 scale                   |
+| `ln1_bias`      | 512           | 512         | LayerNorm_1 bias                    |
+| `output_weight` | 512 x 214     | 109,568     | Output dense layer                  |
+| `output_bias`   | 214           | 214         | Output dense bias                   |
+| **Total**       |               | **784,214** | **~3 MB as float32**                |
 
 ---
 
@@ -213,7 +223,9 @@ Input: 2048 int32 tokens
 
 ### Weight Extraction (`tools/extract_magika_weights.py`)
 
-Google distributes Magika as an ONNX model. ONNX Runtime has a C++ API, but linking it adds a ~20 MB dependency. Since the model is small and the architecture is straightforward, we extract the raw weight tensors from the ONNX file and load them directly.
+Google distributes Magika as an ONNX model. ONNX Runtime has a C++ API, but linking it adds a ~20 MB dependency.
+Since the model is small and the architecture is straightforward, we extract the raw weight tensors from the
+ONNX file and load them directly.
 
 The extraction script:
 1. Loads the ONNX model using the `onnx` Python library
@@ -238,15 +250,19 @@ Binary format (DSMG v1):
     [label_len bytes] label (UTF-8)
 ```
 
-The ONNX tensor names are long JAX-generated strings like `jax2tf_get_logits_/pjit_get_logits_/MagikaV2/Conv_0/transpose_3:0`. The script maps them to short names (`conv_weight`, `embed_bias`, etc.) and squeezes singleton dimensions (e.g., `(1, 512, 1)` becomes `(512,)`).
+The ONNX tensor names are long JAX-generated strings like
+`jax2tf_get_logits_/pjit_get_logits_/MagikaV2/Conv_0/transpose_3:0`. The script maps them to short names
+(`conv_weight`, `embed_bias`, etc.) and squeezes singleton dimensions (e.g., `(1, 512, 1)` becomes `(512,)`).
 
 ### Input Preprocessing
 
 The preprocessing mirrors Magika's Python implementation:
 
-1. **Beginning region**: Left-strip ASCII whitespace (`\t`, `\n`, `\v`, `\f`, `\r`, space) from the input bytes. Take the first 1024 bytes. If shorter, right-pad with token 256.
+1. **Beginning region**: Left-strip ASCII whitespace (`\t`, `\n`, `\v`, `\f`, `\r`, space) from the input bytes.
+   Take the first 1024 bytes. If shorter, right-pad with token 256.
 
-2. **End region**: Right-strip whitespace from the input bytes. Take the last 1024 bytes. If shorter, left-pad with token 256.
+2. **End region**: Right-strip whitespace from the input bytes. Take the last 1024 bytes. If shorter,
+   left-pad with token 256.
 
 3. **Concatenate**: `tokens[0..1023] = beginning`, `tokens[1024..2047] = end`. Total: 2048 int32 values in range [0, 256].
 
@@ -254,15 +270,19 @@ The preprocessing mirrors Magika's Python implementation:
 
 Each layer is implemented as a standalone method in `MagikaModel`:
 
-- **`embedding()`**: Token lookup. `output[i] = embedWeight[token[i]] + embedBias`. No matrix multiply needed -- one-hot × matrix is just a row lookup.
+- **`embedding()`**: Token lookup. `output[i] = embedWeight[token[i]] + embedBias`.
+  No matrix multiply needed -- one-hot × matrix is just a row lookup.
 
 - **`gelu()`**: `GELU(x) = 0.5x(1 + tanh(sqrt(2/pi)(x + 0.044715x^3)))`. Applied element-wise.
 
-- **`layerNorm()`**: Normalizes over the sequence dimension (axis 0), not the feature dimension. Per-feature mean/variance, per-position scale/bias. See [the LayerNorm bug](#the-layernorm-bug) below.
+- **`layerNorm()`**: Normalizes over the sequence dimension (axis 0), not the feature dimension.
+  Per-feature mean/variance, per-position scale/bias. See [the LayerNorm bug](#the-layernorm-bug) below.
 
-- **`conv1d()`**: Standard 1D convolution. 256 input channels, 512 output channels, kernel size 5. This is the most expensive layer (~334M multiply-adds) and dominates inference time.
+- **`conv1d()`**: Standard 1D convolution. 256 input channels, 512 output channels, kernel size 5. This is
+  the most expensive layer (~334M multiply-adds) and dominates inference time.
 
-- **`globalMaxPool()`**: Takes the maximum value across all sequence positions for each channel. `output[c] = max(input[pos][c] for all pos)`.
+- **`globalMaxPool()`**: Takes the maximum value across all sequence positions for each channel.
+  `output[c] = max(input[pos][c] for all pos)`.
 
 - **`dense()`**: `output[c] = sum(input[i] * weight[i][c]) + bias[c]`.
 
@@ -291,7 +311,8 @@ Event loop thread                    Inference thread
 
 ## Debugging: How the Forward Pass Was Validated
 
-The initial implementation produced wrong results -- every input was classified as "wav" with ~12% confidence. Here is the process used to find and fix the bug.
+The initial implementation produced wrong results -- every input was classified as "wav" with ~12% confidence.
+Here is the process used to find and fix the bug.
 
 ### Step 1: Validate the reference model
 
@@ -357,7 +378,8 @@ Output:
   cpp        -> cpp        (0.9457)
 ```
 
-This confirmed: the model works, the preprocessing is correct, and the weights are good. The bug is in the C++ forward pass.
+This confirmed: the model works, the preprocessing is correct, and the weights are good.
+The bug is in the C++ forward pass.
 
 ### Step 2: Trace the ONNX graph
 
@@ -390,14 +412,18 @@ print(init['ConstantFolding/.../LayerNorm_1/truediv_recip:0'])  # 0.001953125 = 
 
 ### The LayerNorm Bug
 
-The standard LayerNorm normalizes over the **feature dimension** (last axis). For data shaped `[512, 256]`, that would mean normalizing each of the 512 rows across their 256 features.
+The standard LayerNorm normalizes over the **feature dimension** (last axis). For data shaped `[512, 256]`,
+that would mean normalizing each of the 512 rows across their 256 features.
 
 But Magika's LayerNorm_0 normalizes over **axis 1** (the sequence/position dimension). For data `[batch, 512, 256]`:
 
-- **Mean and variance** are computed per-feature across all 512 positions: `mean[d] = (1/512) * sum(data[s, d] for s in 0..511)`
-- **Scale and bias** are per-position `[512]`, broadcast across the 256 features: `output[s, d] = (data[s, d] - mean[d]) / sqrt(var[d] + eps) * scale[s] + bias[s]`
+- **Mean and variance** are computed per-feature across all 512 positions:
+  `mean[d] = (1/512) * sum(data[s, d] for s in 0..511)`
+- **Scale and bias** are per-position `[512]`, broadcast across the 256 features:
+  `output[s, d] = (data[s, d] - mean[d]) / sqrt(var[d] + eps) * scale[s] + bias[s]`
 
-This is more like Instance Normalization than standard LayerNorm. The shared constant `1/512` (used for both LN0 and LN1) was the clue -- it would be `1/256` if normalizing over the feature dimension.
+This is more like Instance Normalization than standard LayerNorm. The shared constant `1/512`
+(used for both LN0 and LN1) was the clue -- it would be `1/256` if normalizing over the feature dimension.
 
 The fix:
 
@@ -419,7 +445,9 @@ After this fix, all test cases matched the ONNX Runtime reference output.
 
 ### Lesson
 
-When reimplementing a model from ONNX, don't assume standard semantics for operations like LayerNorm. Trace the actual graph operations and verify the reduction axes and constant values. The ONNX graph is the ground truth -- not the paper, not the architecture name.
+When reimplementing a model from ONNX, don't assume standard semantics for operations like LayerNorm. Trace the
+actual graph operations and verify the reduction axes and constant values. The ONNX graph is the ground
+truth -- not the paper, not the architecture name.
 
 ---
 
@@ -427,24 +455,24 @@ When reimplementing a model from ONNX, don't assume standard semantics for opera
 
 ### Engine tests (`TestEngine`)
 
-| Test | What it verifies |
-|------|-----------------|
+| Test                     | What it verifies                                  |
+|--------------------------|---------------------------------------------------|
 | `SubmitAndReceiveResult` | Async submit delivers correct result via callback |
-| `MultipleSubmissions` | 10 submissions all complete |
-| `ShutdownDrainsQueue` | Pending work completes before shutdown returns |
+| `MultipleSubmissions`    | 10 submissions all complete                       |
+| `ShutdownDrainsQueue`    | Pending work completes before shutdown returns    |
 
 ### Model tests (`TestMagikaModel`)
 
-| Test | What it verifies |
-|------|-----------------|
-| `LoadWeights` | Binary weight file parses correctly, 214 classes loaded |
-| `ClassifyHtml` | HTML content classified as "html" with >30% confidence |
-| `ClassifyJson` | JSON classified as "json" |
-| `ClassifyPython` | Python script classified as "python" |
-| `ClassifyXml` | XML document classified as "xml" |
-| `ClassifyShell` | Bash script classified as "shell" |
-| `ClassifyCpp` | C++ source classified as "cpp" |
-| `BadPathReturnsError` | Missing weight file returns error, no crash |
+| Test                  | What it verifies                                        |
+|-----------------------|---------------------------------------------------------|
+| `LoadWeights`         | Binary weight file parses correctly, 214 classes loaded |
+| `ClassifyHtml`        | HTML content classified as "html" with >30% confidence  |
+| `ClassifyJson`        | JSON classified as "json"                               |
+| `ClassifyPython`      | Python script classified as "python"                    |
+| `ClassifyXml`         | XML document classified as "xml"                        |
+| `ClassifyShell`       | Bash script classified as "shell"                       |
+| `ClassifyCpp`         | C++ source classified as "cpp"                          |
+| `BadPathReturnsError` | Missing weight file returns error, no crash             |
 
 Run tests:
 
@@ -459,26 +487,31 @@ Run tests:
 
 Inference timing (debug build, single-threaded, Intel Mac):
 
-| Stage | Time |
-|-------|------|
+| Stage          | Time   |
+|----------------|--------|
 | Weight loading | ~15 ms |
 | Per-prediction | ~1.3 s |
 
-The Conv1D layer dominates (~95% of inference time): 512 output channels x 256 input channels x 5 kernel positions x 508 sequence positions = ~334M multiply-adds.
+The Conv1D layer dominates (~95% of inference time):
+512 output channels x 256 input channels x 5 kernel positions x 508 sequence positions = ~334M multiply-adds.
 
-In a release build with `-O2`, expect 10-50x improvement from compiler auto-vectorization and loop optimizations. Further speedups possible via:
+In a release build with `-O2`, expect 10-50x improvement from compiler auto-vectorization and loop optimizations.
+Further speedups possible via:
 
 - **Loop reordering** in conv1d to improve cache locality
 - **SIMD intrinsics** (SSE/AVX on x86, NEON on ARM)
 - **Quantization** (INT8 weights, reducing memory bandwidth)
 
-For the proxy use case, inference runs on a dedicated worker thread and does not block the event loop. At ~1.3s per classification in debug, it can handle ~0.8 responses/second, which is sufficient for development and demo purposes.
+For the proxy use case, inference runs on a dedicated worker thread and does not block the event loop.
+At ~1.3s per classification in debug, it can handle ~0.8 responses/second, which is sufficient for
+development and demo purposes.
 
 ---
 
 ## Extending: Adding New Models
 
-The `Engine` abstract class provides a clean extension point. To add a new model (e.g., NetMamba for traffic classification):
+The `Engine` abstract class provides a clean extension point. To add a new model
+(e.g., NetMamba for traffic classification):
 
 1. Create `seer/include/Seer/NetMamba/NetMambaEngine.hpp` and implement `classify()`
 2. Add the source files to `seer/CMakeLists.txt`
@@ -487,7 +520,8 @@ The `Engine` abstract class provides a clean extension point. To add a new model
 The `Engine` interface:
 
 ```cpp
-class Engine {
+class Engine
+{
 public:
     void submit(std::span<std::byte const> payload,
                 std::string url,
@@ -500,4 +534,5 @@ protected:
 };
 ```
 
-The threading, queuing, and lifecycle management are handled by the base class. A new model only needs to implement the synchronous `classify()` method.
+The threading, queuing, and lifecycle management are handled by the base class. A new model only needs
+to implement the synchronous `classify()` method.

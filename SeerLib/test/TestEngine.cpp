@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
-#include <chrono>
 #include <latch>
 
 using namespace Seer;

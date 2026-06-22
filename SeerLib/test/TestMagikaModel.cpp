@@ -5,14 +5,12 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <filesystem>
 
 using namespace Seer;
 
 namespace
 {
-
-// Path to weights — set via cmake or assumes run from project root
-constexpr auto kModelPath = "models/magika.weights";
 
 std::vector<std::byte> toBytes(std::string_view s)
 {
@@ -22,18 +20,37 @@ std::vector<std::byte> toBytes(std::string_view s)
     return v;
 }
 
+namespace fs = std::filesystem;
+fs::path getModelPath()
+{
+    static fs::path modelPath;
+
+    if (modelPath.empty()) {
+        for (auto const& part : fs::current_path()) {
+            if (part.string() == "build")
+                break;
+            modelPath /= part;
+        }
+        
+        modelPath /= "models/magika.weights";
+    }
+
+    return modelPath;
+}
+
+
 } // namespace
 
 TEST(MagikaModelTest, LoadWeights)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     EXPECT_EQ(result->numClasses(), 214u);
 }
 
 TEST(MagikaModelTest, ClassifyHtml)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
@@ -48,7 +65,7 @@ TEST(MagikaModelTest, ClassifyHtml)
 
 TEST(MagikaModelTest, ClassifyJson)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
@@ -61,7 +78,7 @@ TEST(MagikaModelTest, ClassifyJson)
 
 TEST(MagikaModelTest, ClassifyPython)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
@@ -79,7 +96,7 @@ TEST(MagikaModelTest, ClassifyPython)
 
 TEST(MagikaModelTest, ClassifyXml)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
@@ -93,7 +110,7 @@ TEST(MagikaModelTest, ClassifyXml)
 
 TEST(MagikaModelTest, ClassifyShell)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
@@ -111,7 +128,7 @@ TEST(MagikaModelTest, ClassifyShell)
 
 TEST(MagikaModelTest, ClassifyCpp)
 {
-    auto result = MagikaModel::loadFromFile(kModelPath);
+    auto result = MagikaModel::loadFromFile(getModelPath().string());
     ASSERT_TRUE(result.has_value()) << result.error().message;
     auto& model = *result;
 
